@@ -84,6 +84,11 @@ func handlerRegister(s *state, cmd command) error {
 	return nil
 }
 
+func handlerReset(s *state, cmd command) error {
+	fmt.Println("Inside Reset Handler")
+	return s.db.DeleteAllUser(context.Background())
+}
+
 func main() {
 	godotenv.Load()
 
@@ -118,6 +123,8 @@ func main() {
 	case "register":
 		fmt.Println("Register handler initiate")
 		cmds.register(cmdName, handlerRegister)
+	case "reset":
+		cmds.register(cmdName, handlerReset)
 	}
 
 	cmd := command{

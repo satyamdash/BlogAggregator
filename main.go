@@ -22,10 +22,24 @@ import (
 type state struct {
 	cfg *config.Config
 	db  *database.Queries
+	ctx context.Context
 }
 
 type commands struct {
 	CommandHandlerStore map[string]func(*state, command) error
+}
+
+func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) error) func(*state, command) error {
+	return func(s *state, cmd command) error {
+		if s.cfg.Current_User_Name == "" {
+			return fmt.Errorf("no user logged in; please log in first")
+		}
+		user, err := s.db.GetUser(s.ctx, s.cfg.Current_User_Name)
+		if err != nil {
+			return fmt.Errorf("failed to fetch logged-in user: %v", err)
+		}
+		return handler(s, cmd, user)
+	}
 }
 
 func (c *commands) run(s *state, cmd command) error {
@@ -55,7 +69,7 @@ func handlerLogin(s *state, cmd command) error {
 	if len(cmd.argslice) < 3 {
 		return fmt.Errorf("a username is required")
 	}
-	_, err := s.db.GetUser(context.Background(), cmd.argslice[2])
+	_, err := s.db.GetUser(s.ctx, cmd.argslice[2])
 	if err != nil {
 		return fmt.Errorf("user not found: %w", err)
 		os.Exit(1)
@@ -78,7 +92,7 @@ func handlerRegister(s *state, cmd command) error {
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}
-	user, err := s.db.CreateUser(context.Background(), userparams)
+	user, err := s.db.CreateUser(s.ctx, userparams)
 	if err != nil {
 		return err
 	}
@@ -90,11 +104,11 @@ func handlerRegister(s *state, cmd command) error {
 
 func handlerReset(s *state, cmd command) error {
 	fmt.Println("Inside Reset Handler")
-	return s.db.DeleteAllUser(context.Background())
+	return s.db.DeleteAllUser(s.ctx)
 }
 
 func handlerLogAllUsers(s *state, cmd command) error {
-	users, err := s.db.GetUsers(context.Background())
+	users, err := s.db.GetUsers(s.ctx)
 	if err != nil {
 		return err
 	}
@@ -153,7 +167,7 @@ func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
 
 func handlerAggWebsite(s *state, cmd command) error {
 	fmt.Println("Inside AggWebsite Handler")
-	rssfeed, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
+	rssfeed, err := fetchFeed(s.ctx, "https://www.wagslane.dev/index.xml")
 	if err != nil {
 		return err
 	}
@@ -172,22 +186,16 @@ func handlerAggWebsite(s *state, cmd command) error {
 	return nil
 }
 
-func handlerAddFeed(s *state, cmd command) error {
-	ctx := context.Background()
-	curr_user := s.cfg.GetCurrentUser()
+func handlerAddFeed(s *state, cmd command, user database.User) error {
 	if len(cmd.argslice) < 4 {
 		return fmt.Errorf("not enough arguments")
-	}
-	user, err := s.db.GetUser(ctx, curr_user)
-	if err != nil {
-		return err
 	}
 	feedparams := database.CreateFeedParams{
 		Name:   cmd.argslice[2],
 		Url:    cmd.argslice[3],
 		UserID: user.ID,
 	}
-	dbfeed, err := s.db.CreateFeed(ctx, feedparams)
+	dbfeed, err := s.db.CreateFeed(s.ctx, feedparams)
 	if err != nil {
 		return err
 	}
@@ -195,7 +203,7 @@ func handlerAddFeed(s *state, cmd command) error {
 		UserID: user.ID,
 		FeedID: dbfeed.ID,
 	}
-	_, err = s.db.CreateFeedFollow(ctx, feedfollowparams)
+	_, err = s.db.CreateFeedFollow(s.ctx, feedfollowparams)
 	if err != nil {
 		return err
 	}
@@ -204,7 +212,7 @@ func handlerAddFeed(s *state, cmd command) error {
 }
 
 func handlerGetFeeds(s *state, cmd command) error {
-	ctx := context.Background()
+	ctx := s.ctx
 	dbfeed, err := s.db.GetFeeds(ctx)
 	if err != nil {
 		return err
@@ -222,17 +230,11 @@ func handlerGetFeeds(s *state, cmd command) error {
 	return nil
 }
 
-func handlerFollow(s *state, cmd command) error {
-	ctx := context.Background()
-	curr_user := s.cfg.GetCurrentUser()
+func handlerFollow(s *state, cmd command, user database.User) error {
 	if len(cmd.argslice) < 3 {
 		return fmt.Errorf("not enough arguments")
 	}
-	user, err := s.db.GetUser(ctx, curr_user)
-	if err != nil {
-		return err
-	}
-	feed, err := s.db.GetFeedNameByUrl(ctx, cmd.argslice[2])
+	feed, err := s.db.GetFeedNameByUrl(s.ctx, cmd.argslice[2])
 	if err != nil {
 		return err
 	}
@@ -240,23 +242,17 @@ func handlerFollow(s *state, cmd command) error {
 		UserID: user.ID,
 		FeedID: feed.ID,
 	}
-	dbfollow, err := s.db.CreateFeedFollow(ctx, feedfollowparams)
+	dbfollow, err := s.db.CreateFeedFollow(s.ctx, feedfollowparams)
 	if err != nil {
 		return err
 	}
 	fmt.Println(dbfollow.FeedName)
-	fmt.Println(curr_user)
+	fmt.Println(user.Name)
 	return nil
 }
 
-func handlerFollowing(s *state, cmd command) error {
-	ctx := context.Background()
-	curr_user := s.cfg.GetCurrentUser()
-	user, err := s.db.GetUser(ctx, curr_user)
-	if err != nil {
-		return err
-	}
-	dbfeed, err := s.db.GetFeedFollowsForUser(ctx, user.ID)
+func handlerFollowing(s *state, cmd command, user database.User) error {
+	dbfeed, err := s.db.GetFeedFollowsForUser(s.ctx, user.ID)
 	if err != nil {
 		return err
 	}
@@ -282,7 +278,8 @@ func main() {
 		fmt.Print(err)
 	}
 	st := &state{cfg: cfg,
-		db: dbQueries}
+		db:  dbQueries,
+		ctx: context.Background()}
 	cmds := &commands{CommandHandlerStore: make(map[string]func(*state, command) error)}
 
 	args := os.Args
@@ -309,13 +306,13 @@ func main() {
 	case "agg":
 		cmds.register(cmdName, handlerAggWebsite)
 	case "addfeed":
-		cmds.register(cmdName, handlerAddFeed)
+		cmds.register(cmdName, middlewareLoggedIn(handlerAddFeed))
 	case "feeds":
 		cmds.register(cmdName, handlerGetFeeds)
 	case "follow":
-		cmds.register(cmdName, handlerFollow)
+		cmds.register(cmdName, middlewareLoggedIn(handlerFollow))
 	case "following":
-		cmds.register(cmdName, handlerFollowing)
+		cmds.register(cmdName, middlewareLoggedIn(handlerFollowing))
 	}
 
 	cmd := command{

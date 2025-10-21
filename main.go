@@ -167,23 +167,16 @@ func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
 
 func handlerAggWebsite(s *state, cmd command) error {
 	fmt.Println("Inside AggWebsite Handler")
-	rssfeed, err := fetchFeed(s.ctx, "https://www.wagslane.dev/index.xml")
+	time_between_reqs := cmd.argslice[2]
+	timeBetweenRequests, err := time.ParseDuration(time_between_reqs)
 	if err != nil {
 		return err
 	}
-
-	fmt.Println(html.UnescapeString(rssfeed.Channel.Title))
-	fmt.Println(rssfeed.Channel.Link)
-	fmt.Println(html.UnescapeString(rssfeed.Channel.Description))
-
-	for _, item := range rssfeed.Channel.Item {
-		fmt.Println(html.UnescapeString(item.Title))
-		fmt.Println(item.Link)
-		fmt.Println(html.UnescapeString(item.Description))
-		fmt.Println(item.PubDate)
+	ticker := time.NewTicker(timeBetweenRequests)
+	for ; ; <-ticker.C {
+		fmt.Printf("Collecting feeds every %s", time_between_reqs)
+		scrapeFeeds(s)
 	}
-
-	return nil
 }
 
 func handlerAddFeed(s *state, cmd command, user database.User) error {
@@ -280,6 +273,31 @@ func handlerUnfollow(s *state, cmd command, user database.User) error {
 		return err
 	}
 
+	return nil
+}
+
+func scrapeFeeds(s *state) error {
+	dbfeed, err := s.db.GetNextFeedToFetch(s.ctx)
+	if err != nil {
+		return err
+	}
+	feedfetchparam := database.MarkFeedFetchedParams{
+		LastFetchedAt: sql.NullTime{Time: time.Now(), Valid: true},
+		UpdatedAt:     time.Now(),
+		ID:            dbfeed.ID,
+	}
+	dbfeed, err = s.db.MarkFeedFetched(s.ctx, feedfetchparam)
+	if err != nil {
+		return err
+	}
+	rssfeed, err := fetchFeed(s.ctx, dbfeed.Url)
+	if err != nil {
+		return err
+	}
+
+	for _, item := range rssfeed.Channel.Item {
+		fmt.Println(html.UnescapeString(item.Title))
+	}
 	return nil
 }
 

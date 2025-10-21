@@ -3,7 +3,11 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/xml"
 	"fmt"
+	"html"
+	"io"
+	"net/http"
 	"os"
 	"time"
 
@@ -89,6 +93,85 @@ func handlerReset(s *state, cmd command) error {
 	return s.db.DeleteAllUser(context.Background())
 }
 
+func handlerLogAllUsers(s *state, cmd command) error {
+	users, err := s.db.GetUsers(context.Background())
+	if err != nil {
+		return err
+	}
+
+	for _, user := range users {
+		if s.cfg.Current_User_Name == user.Name {
+			fmt.Printf("* %s (current)\n", user.Name)
+		} else {
+			fmt.Printf("* %s\n", user.Name)
+		}
+	}
+	return nil
+}
+
+type RSSFeed struct {
+	Channel struct {
+		Title       string    `xml:"title"`
+		Link        string    `xml:"link"`
+		Description string    `xml:"description"`
+		Item        []RSSItem `xml:"item"`
+	} `xml:"channel"`
+}
+
+type RSSItem struct {
+	Title       string `xml:"title"`
+	Link        string `xml:"link"`
+	Description string `xml:"description"`
+	PubDate     string `xml:"pubDate"`
+}
+
+func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
+	client := &http.Client{}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", feedURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("User-Agent", "gator")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	read, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	var rssfeed RSSFeed
+	if err := xml.Unmarshal(read, &rssfeed); err != nil {
+		return nil, err
+	}
+	return &rssfeed, nil
+
+}
+
+func handlerAggWebsite(s *state, cmd command) error {
+	fmt.Println("Inside AggWebsite Handler")
+	rssfeed, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(html.UnescapeString(rssfeed.Channel.Title))
+	fmt.Println(rssfeed.Channel.Link)
+	fmt.Println(html.UnescapeString(rssfeed.Channel.Description))
+
+	for _, item := range rssfeed.Channel.Item {
+		fmt.Println(html.UnescapeString(item.Title))
+		fmt.Println(item.Link)
+		fmt.Println(html.UnescapeString(item.Description))
+		fmt.Println(item.PubDate)
+	}
+
+	return nil
+}
+
 func main() {
 	godotenv.Load()
 
@@ -125,6 +208,10 @@ func main() {
 		cmds.register(cmdName, handlerRegister)
 	case "reset":
 		cmds.register(cmdName, handlerReset)
+	case "users":
+		cmds.register(cmdName, handlerLogAllUsers)
+	case "agg":
+		cmds.register(cmdName, handlerAggWebsite)
 	}
 
 	cmd := command{

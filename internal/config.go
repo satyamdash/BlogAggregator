@@ -18,6 +18,9 @@ func (c *Config) SetUser(current_user_name string) {
 	c.Current_User_Name = current_user_name
 	Write(c)
 }
+func (c *Config) GetCurrentUser() string {
+	return c.Current_User_Name
+}
 func (c *Config) SetDBUrl(url string) {
 	c.DB_URL = url
 	Write(c)

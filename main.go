@@ -264,6 +264,25 @@ func handlerFollowing(s *state, cmd command, user database.User) error {
 
 }
 
+func handlerUnfollow(s *state, cmd command, user database.User) error {
+	if len(cmd.argslice) < 3 {
+		return fmt.Errorf("not enough arguments")
+	}
+	feed, err := s.db.GetFeedNameByUrl(s.ctx, cmd.argslice[2])
+	if err != nil {
+		return err
+	}
+	feedunfollow := database.DeleteFeedFollowParams{
+		UserID: user.ID,
+		FeedID: feed.ID,
+	}
+	if err := s.db.DeleteFeedFollow(s.ctx, feedunfollow); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func main() {
 	godotenv.Load()
 
@@ -313,6 +332,8 @@ func main() {
 		cmds.register(cmdName, middlewareLoggedIn(handlerFollow))
 	case "following":
 		cmds.register(cmdName, middlewareLoggedIn(handlerFollowing))
+	case "unfollow":
+		cmds.register(cmdName, middlewareLoggedIn(handlerUnfollow))
 	}
 
 	cmd := command{

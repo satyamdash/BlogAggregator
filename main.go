@@ -172,6 +172,29 @@ func handlerAggWebsite(s *state, cmd command) error {
 	return nil
 }
 
+func handlerAddFeed(s *state, cmd command) error {
+	ctx := context.Background()
+	curr_user := s.cfg.GetCurrentUser()
+	if len(cmd.argslice) < 4 {
+		return fmt.Errorf("not enough arguments")
+	}
+	user, err := s.db.GetUser(ctx, curr_user)
+	if err != nil {
+		return err
+	}
+	feedparams := database.CreateFeedParams{
+		Name:   cmd.argslice[2],
+		Url:    cmd.argslice[3],
+		UserID: user.ID,
+	}
+	dbfeed, err := s.db.CreateFeed(ctx, feedparams)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%v", dbfeed)
+	return nil
+}
+
 func main() {
 	godotenv.Load()
 
@@ -212,6 +235,8 @@ func main() {
 		cmds.register(cmdName, handlerLogAllUsers)
 	case "agg":
 		cmds.register(cmdName, handlerAggWebsite)
+	case "addfeed":
+		cmds.register(cmdName, handlerAddFeed)
 	}
 
 	cmd := command{

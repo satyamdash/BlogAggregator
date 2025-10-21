@@ -195,6 +195,25 @@ func handlerAddFeed(s *state, cmd command) error {
 	return nil
 }
 
+func handlerGetFeeds(s *state, cmd command) error {
+	ctx := context.Background()
+	dbfeed, err := s.db.GetFeeds(ctx)
+	if err != nil {
+		return err
+	}
+	for _, feed := range dbfeed {
+		fmt.Println(feed.Name)
+		fmt.Println(feed.Url)
+		dbuser, err := s.db.GetUserById(ctx, feed.UserID)
+		if err != nil {
+			return err
+		}
+		fmt.Println(dbuser.Name)
+
+	}
+	return nil
+}
+
 func main() {
 	godotenv.Load()
 
@@ -237,6 +256,8 @@ func main() {
 		cmds.register(cmdName, handlerAggWebsite)
 	case "addfeed":
 		cmds.register(cmdName, handlerAddFeed)
+	case "feeds":
+		cmds.register(cmdName, handlerGetFeeds)
 	}
 
 	cmd := command{

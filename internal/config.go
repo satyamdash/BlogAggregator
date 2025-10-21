@@ -51,8 +51,8 @@ func Read() (*Config, error) {
 		return nil, err
 	}
 
-	fmt.Println(cfg.DB_URL)
-	fmt.Println(cfg.Current_User_Name)
+	//fmt.Println(cfg.DB_URL)
+	//fmt.Println(cfg.Current_User_Name)
 
 	return &cfg, nil
 }

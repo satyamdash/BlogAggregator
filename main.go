@@ -5,10 +5,12 @@ import (
 	"database/sql"
 	"encoding/xml"
 	"fmt"
-	"html"
 	"io"
+	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -296,9 +298,69 @@ func scrapeFeeds(s *state) error {
 	}
 
 	for _, item := range rssfeed.Channel.Item {
-		fmt.Println(html.UnescapeString(item.Title))
+		// Try to parse the published date safely
+		var publishedAt time.Time
+		if item.PubDate != "" {
+			// Common RSS date format: "Mon, 02 Jan 2006 15:04:05 MST"
+			t, err := time.Parse(time.RFC1123Z, item.PubDate)
+			if err != nil {
+				// Try fallback without timezone offset
+				t, err = time.Parse(time.RFC1123, item.PubDate)
+				if err != nil {
+					// If parsing fails, use current time
+					publishedAt = time.Now().UTC()
+				} else {
+					publishedAt = t.UTC()
+				}
+			} else {
+				publishedAt = t.UTC()
+			}
+		} else {
+			publishedAt = time.Now().UTC()
+		}
+		createpostparam := database.CreatePostParams{
+			Title:       item.Title,
+			Url:         item.Link,
+			Description: item.Description,
+			FeedID:      dbfeed.ID,
+			PublishedAt: publishedAt,
+		}
+
+		_, err := s.db.CreatePost(s.ctx, createpostparam)
+		if err != nil {
+			// Check if the error is a duplicate URL (unique violation)
+			if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
+				// Ignore duplicate post
+				continue
+			}
+			// Log and continue for other errors
+			log.Printf("Error inserting post %q: %v", item.Title, err)
+			continue
+		}
+	}
+
+	return nil
+}
+
+func handlerBrowse(s *state, cmd command, user database.User) error {
+	limit := 2
+	if len(cmd.argslice) > 1 {
+		intVal, err := strconv.Atoi(cmd.argslice[1])
+		if err != nil {
+			return err
+		}
+		limit = intVal
+	}
+	postuserparam := database.GetPostsForUserParams{
+		UserID: user.ID,
+		Limit:  int32(limit),
+	}
+	_, err := s.db.GetPostsForUser(s.ctx, postuserparam)
+	if err != nil {
+		return err
 	}
 	return nil
+
 }
 
 func main() {
@@ -352,6 +414,8 @@ func main() {
 		cmds.register(cmdName, middlewareLoggedIn(handlerFollowing))
 	case "unfollow":
 		cmds.register(cmdName, middlewareLoggedIn(handlerUnfollow))
+	case "browse":
+		cmds.register(cmdName, middlewareLoggedIn(handlerBrowse))
 	}
 
 	cmd := command{

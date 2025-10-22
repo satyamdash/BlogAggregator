@@ -12,6 +12,38 @@ import (
 	"github.com/google/uuid"
 )
 
+const addBookmark = `-- name: AddBookmark :one
+INSERT INTO post_bookmarks (user_id, post_id) VALUES ($1, $2) RETURNING id
+`
+
+type AddBookmarkParams struct {
+	UserID uuid.UUID
+	PostID uuid.UUID
+}
+
+func (q *Queries) AddBookmark(ctx context.Context, arg AddBookmarkParams) (uuid.UUID, error) {
+	row := q.db.QueryRowContext(ctx, addBookmark, arg.UserID, arg.PostID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const addLike = `-- name: AddLike :one
+INSERT INTO post_likes (user_id, post_id) VALUES ($1, $2) RETURNING id
+`
+
+type AddLikeParams struct {
+	UserID uuid.UUID
+	PostID uuid.UUID
+}
+
+func (q *Queries) AddLike(ctx context.Context, arg AddLikeParams) (uuid.UUID, error) {
+	row := q.db.QueryRowContext(ctx, addLike, arg.UserID, arg.PostID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const createPost = `-- name: CreatePost :one
 INSERT INTO posts (title, url, description,feed_id,published_at)
 VALUES (
@@ -52,6 +84,122 @@ func (q *Queries) CreatePost(ctx context.Context, arg CreatePostParams) (Post, e
 		&i.FeedID,
 	)
 	return i, err
+}
+
+const getAllPosts = `-- name: GetAllPosts :many
+SELECT id, created_at, updated_at, title, url, description, published_at, feed_id FROM posts
+`
+
+func (q *Queries) GetAllPosts(ctx context.Context) ([]Post, error) {
+	rows, err := q.db.QueryContext(ctx, getAllPosts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Post
+	for rows.Next() {
+		var i Post
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Title,
+			&i.Url,
+			&i.Description,
+			&i.PublishedAt,
+			&i.FeedID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getBookmarksForUser = `-- name: GetBookmarksForUser :many
+SELECT posts.id, posts.created_at, posts.updated_at, posts.title, posts.url, posts.description, posts.published_at, posts.feed_id
+FROM posts
+JOIN post_bookmarks ON posts.id = post_bookmarks.post_id
+WHERE post_bookmarks.user_id=$1
+ORDER BY post_bookmarks.created_at DESC
+`
+
+func (q *Queries) GetBookmarksForUser(ctx context.Context, userID uuid.UUID) ([]Post, error) {
+	rows, err := q.db.QueryContext(ctx, getBookmarksForUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Post
+	for rows.Next() {
+		var i Post
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Title,
+			&i.Url,
+			&i.Description,
+			&i.PublishedAt,
+			&i.FeedID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getLikesForUser = `-- name: GetLikesForUser :many
+SELECT posts.id, posts.created_at, posts.updated_at, posts.title, posts.url, posts.description, posts.published_at, posts.feed_id
+FROM posts
+JOIN post_likes ON posts.id = post_likes.post_id
+WHERE post_likes.user_id=$1
+ORDER BY post_likes.created_at DESC
+`
+
+func (q *Queries) GetLikesForUser(ctx context.Context, userID uuid.UUID) ([]Post, error) {
+	rows, err := q.db.QueryContext(ctx, getLikesForUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Post
+	for rows.Next() {
+		var i Post
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Title,
+			&i.Url,
+			&i.Description,
+			&i.PublishedAt,
+			&i.FeedID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getPostsForUser = `-- name: GetPostsForUser :many
@@ -99,4 +247,32 @@ func (q *Queries) GetPostsForUser(ctx context.Context, arg GetPostsForUserParams
 		return nil, err
 	}
 	return items, nil
+}
+
+const removeBookmark = `-- name: RemoveBookmark :exec
+DELETE FROM post_bookmarks WHERE user_id=$1 AND post_id=$2
+`
+
+type RemoveBookmarkParams struct {
+	UserID uuid.UUID
+	PostID uuid.UUID
+}
+
+func (q *Queries) RemoveBookmark(ctx context.Context, arg RemoveBookmarkParams) error {
+	_, err := q.db.ExecContext(ctx, removeBookmark, arg.UserID, arg.PostID)
+	return err
+}
+
+const removeLike = `-- name: RemoveLike :exec
+DELETE FROM post_likes WHERE user_id=$1 AND post_id=$2
+`
+
+type RemoveLikeParams struct {
+	UserID uuid.UUID
+	PostID uuid.UUID
+}
+
+func (q *Queries) RemoveLike(ctx context.Context, arg RemoveLikeParams) error {
+	_, err := q.db.ExecContext(ctx, removeLike, arg.UserID, arg.PostID)
+	return err
 }

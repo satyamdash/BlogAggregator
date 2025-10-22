@@ -40,6 +40,20 @@ type Post struct {
 	FeedID      uuid.UUID
 }
 
+type PostBookmark struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	PostID    uuid.UUID
+	CreatedAt sql.NullTime
+}
+
+type PostLike struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	PostID    uuid.UUID
+	CreatedAt sql.NullTime
+}
+
 type User struct {
 	ID        uuid.UUID
 	CreatedAt time.Time

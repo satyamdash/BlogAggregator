@@ -17,6 +17,7 @@ import (
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 
+	"github.com/lithammer/fuzzysearch/fuzzy"
 	config "github.com/satyamdash/BlogAggregator/internal"
 	"github.com/satyamdash/BlogAggregator/internal/database"
 )
@@ -374,6 +375,37 @@ func handlerBrowse(s *state, cmd command, user database.User) error {
 
 }
 
+func handlerSearch(s *state, cmd command, user database.User) error {
+	if len(cmd.argslice) < 3 {
+		return fmt.Errorf("not enough arguments")
+	}
+	dbpost, err := s.db.GetAllPosts(s.ctx)
+	if err != nil {
+		return err
+	}
+	for _, post := range dbpost {
+		if fuzzy.Match(cmd.argslice[2], post.Title) {
+			fmt.Println(post.Title, post.Url)
+		}
+	}
+
+	return nil
+}
+
+func handlerBookmark(s *state, cmd command, user database.User) error {
+	postID := cmd.argslice[2] // validate UUID
+	postuuid, err := uuid.Parse(postID)
+	if err != nil {
+		return err
+	}
+	bookmarkparams := database.AddBookmarkParams{
+		UserID: user.ID,
+		PostID: postuuid,
+	}
+	_, err = s.db.AddBookmark(s.ctx, bookmarkparams)
+	return err
+}
+
 func main() {
 	// Load .env file
 	err := godotenv.Load()
@@ -445,6 +477,10 @@ func main() {
 		cmds.register(cmdName, middlewareLoggedIn(handlerUnfollow))
 	case "browse":
 		cmds.register(cmdName, middlewareLoggedIn(handlerBrowse))
+	case "search":
+		cmds.register(cmdName, middlewareLoggedIn(handlerSearch))
+	case "bookmark":
+		cmds.register(cmdName, middlewareLoggedIn(handlerBookmark))
 	}
 
 	cmd := command{

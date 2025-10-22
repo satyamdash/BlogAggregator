@@ -96,6 +96,7 @@ func handlerRegister(s *state, cmd command) error {
 	}
 	user, err := s.db.CreateUser(s.ctx, userparams)
 	if err != nil {
+		fmt.Println(err)
 		return err
 	}
 	s.cfg.SetUser(userparams.Name)
@@ -364,13 +365,31 @@ func handlerBrowse(s *state, cmd command, user database.User) error {
 }
 
 func main() {
-	godotenv.Load()
+	// Load .env file
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("Warning: .env file not found, using environment variables")
+	}
 
+	// Get DB URL from env
 	dbURL := os.Getenv("DB_URL")
+	if dbURL == "" {
+		log.Fatal("DB_URL is not set in environment")
+	}
+	fmt.Println("Connecting to DB:", dbURL)
+
+	// Open DB
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
-		fmt.Println("Error reading dburl from env")
+		log.Fatalf("Failed to open database: %v", err)
 	}
+
+	// Verify connection
+	if err := db.Ping(); err != nil {
+		log.Fatalf("Cannot connect to database: %v", err)
+	}
+
+	// Initialize queries
 	dbQueries := database.New(db)
 	cfg, err := config.Read()
 	if err != nil {

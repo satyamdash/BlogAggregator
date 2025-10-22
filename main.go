@@ -345,6 +345,7 @@ func scrapeFeeds(s *state) error {
 
 func handlerBrowse(s *state, cmd command, user database.User) error {
 	limit := 2
+	page := 3
 	if len(cmd.argslice) > 1 {
 		intVal, err := strconv.Atoi(cmd.argslice[1])
 		if err != nil {
@@ -352,9 +353,18 @@ func handlerBrowse(s *state, cmd command, user database.User) error {
 		}
 		limit = intVal
 	}
+	if len(cmd.argslice) > 2 {
+		intVal, err := strconv.Atoi(cmd.argslice[2])
+		if err != nil {
+			return err
+		}
+		page = intVal
+	}
+	offset := (page - 1) * limit
 	postuserparam := database.GetPostsForUserParams{
 		UserID: user.ID,
 		Limit:  int32(limit),
+		Offset: int32(offset),
 	}
 	_, err := s.db.GetPostsForUser(s.ctx, postuserparam)
 	if err != nil {

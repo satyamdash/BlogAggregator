@@ -15,4 +15,4 @@ FROM posts p
 JOIN feeds f ON p.feed_id = f.id
 WHERE f.user_id = $1
 ORDER BY p.published_at DESC
-LIMIT $2;
+LIMIT $2 OFFSET $3;
